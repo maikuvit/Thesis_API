@@ -21,8 +21,8 @@ provider:
   runtime: python:3
 
 functions:
-  hello:
-    handler: handler.hello
+  helloworld:
+    handler: handler.helloworld
 
 # extend the framework using plugins listed here:
 # https://github.com/serverless/plugins

@@ -1,4 +1,4 @@
-def hello(params):
+def helloworld(params):
     name = params.get("name", "stranger")
     greeting = "Hello " + name + "!"
     print(greeting)

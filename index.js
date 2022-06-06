@@ -2,6 +2,7 @@ const express = require('express');
 const uuid = require('uuid')
 const { exec } = require("child_process");
 const { executionAsyncId } = require('async_hooks');
+const { stdout } = require('process');
 const app = express()
 const port = 80
 
@@ -18,15 +19,19 @@ app.get('/path', (req, res) => {
 //         error handling
 app.get('/deploy/:name', (req, res) => {
     Executions[req.params.name] = [];
-
-    res.send("function deployed.");
+    exec(`serverless deploy`,{"cwd":`${FUNCTIONS_PATH + "\\" + req.params.name}`} , (error, stdout, stderr) => {
+        console.log(stdout);
+        res.send(stdout);
+    });
 })
 
 
 //#### remove a function ####
 app.get('/remove/:name', (req, res) => {
-    res.send(`invoke ${req.params.name}`)
-    })
+    exec(`serverless remove`,{"cwd":`${FUNCTIONS_PATH + "\\" + req.params.name}`},(error, stdout, stderr) => {
+        res.send(stderr);
+    });
+});
 
 
 //#### invoke a function ####
@@ -34,6 +39,7 @@ app.get('/invoke/:name', (req, res) => {
 
     var fun_name = req.params.name;
     console.log(Executions[fun_name]);
+    Executions[fun_name] = [];
     if(!Executions[fun_name]){
         res.send(`Function ${fun_name} has not been deployed. Please deploy the function before invoking it.`);
         return;
@@ -45,16 +51,15 @@ app.get('/invoke/:name', (req, res) => {
         "res" : ""
     };
 
-    exec(`echo ${fun_name}`, (error, stdout, stderr) => {
-        
-        setTimeout(function() {
+    let cmd = `serverless invoke -f ${fun_name}`;
+    console.log(cmd);
+    exec(cmd,{"cwd":`${FUNCTIONS_PATH + "\\" + req.params.name}`}, (error, stdout, stderr) => {
+            console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAA");
             Executions[fun_name][token]["status"] = "done";
             Executions[fun_name][token]["res"] = `${stdout}`;
-        }, 3000);
-    });
-
+        });
     res.send(`invoke ${fun_name} with unique id ${token} <a href="/results/${fun_name}/${token}">test</a>`);
-    })
+});
 
 app.get('/results/:name/:exec_id',(req, res) => {
     let exec_id = req.params.exec_id;
@@ -69,7 +74,7 @@ app.get('/results/:name/:exec_id',(req, res) => {
         res.send(`execution ${exec_id} is still running.`);
         return;
     }
-    res.send(`exec with uuid ${req.params.exec_id} has as output: ${Executions[fun_name][req.params.exec_id]["res"]}`);
+    res.send(`exec with uuid ${req.params.exec_id} has as output:\n${Executions[fun_name][req.params.exec_id]["res"]}`);
 })
 
 app.listen(port, () => {
