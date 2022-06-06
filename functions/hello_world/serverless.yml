@@ -1,0 +1,15 @@
+org: maiku
+app: simple-aws-test
+service: simple-aws-test
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.8
+
+functions:
+  hello:
+    handler: handler.hello
+  reverse:
+    handler: handler.reverse
