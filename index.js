@@ -1,14 +1,30 @@
 const express = require('express');
-const uuid = require('uuid')
-const { exec } = require("child_process");
-const { executionAsyncId } = require('async_hooks');
-const { stdout } = require('process');
+const uuid = require('uuid');
+const { exec, execSync} = require("child_process");
+const fileUpload = require("express-fileupload");
+const fs = require('fs');
+
 const app = express()
 const port = 80
 
-const FUNCTIONS_PATH = `${__dirname + "\\functions"}`;
-var Executions = [];
+const FUNCTIONS_PATH = `${__dirname + "\\files"}`;
 
+const getFunctionPath = (filename) =>{
+    console.log(filename);
+    return `${FUNCTIONS_PATH + "\\" + getFilenameNoExtention(filename) }\\`;
+}
+
+const getFilenameNoExtention = (filename) => {
+    return filename.replace(/\.[^/.]+$/, "");
+}
+let Executions = [];
+
+//specify that the app is gonna require the fileUpload module 
+app.use(
+    fileUpload()
+  );
+
+  //TEST ONLY
 app.get('/path', (req, res) => {
     res.send(`${FUNCTIONS_PATH}`)
   })
@@ -19,7 +35,8 @@ app.get('/path', (req, res) => {
 //         error handling
 app.get('/deploy/:name', (req, res) => {
     Executions[req.params.name] = [];
-    exec(`serverless deploy`,{"cwd":`${FUNCTIONS_PATH + "\\" + req.params.name}`} , (error, stdout, stderr) => {
+    //sync execution to the serverless deploy (no need to async it)
+    exec(`serverless deploy`,{"cwd": getFunctionPath(req.params.name)} , (error, stdout, stderr) => {
         console.log(stdout);
         res.send(stdout);
     });
@@ -28,8 +45,8 @@ app.get('/deploy/:name', (req, res) => {
 
 //#### remove a function ####
 app.get('/remove/:name', (req, res) => {
-    exec(`serverless remove`,{"cwd":`${FUNCTIONS_PATH + "\\" + req.params.name}`},(error, stdout, stderr) => {
-        res.send(stderr);
+    exec(`serverless remove`,{"cwd": getFunctionPath(req.params.name)},(error, stdout, stderr) => {
+        res.send(stdout);
     });
 });
 
@@ -37,45 +54,100 @@ app.get('/remove/:name', (req, res) => {
 //#### invoke a function ####
 app.get('/invoke/:name', (req, res) => {
 
-    var fun_name = req.params.name;
+    let fun_name = req.params.name;
     console.log(Executions[fun_name]);
-    Executions[fun_name] = [];
+    //to be removed! need a way to check functions already deployed!
     if(!Executions[fun_name]){
         res.send(`Function ${fun_name} has not been deployed. Please deploy the function before invoking it.`);
         return;
     }
 
-    var token = uuid.v1();
+    let token = uuid.v1();
     Executions[fun_name][token] = {
         "status" : "executing",
         "res" : ""
     };
 
     let cmd = `serverless invoke -f ${fun_name}`;
-    console.log(cmd);
-    exec(cmd,{"cwd":`${FUNCTIONS_PATH + "\\" + req.params.name}`}, (error, stdout, stderr) => {
-            console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAA");
+
+    let prom = new Promise((resolve, reject) => {
+        let cont = execSync(cmd,{"cwd": getFunctionPath(fun_name)});
+        resolve(cont);
+    });
+    prom.then((content) => {
+        Executions[fun_name][token]["status"] = "done";
+        Executions[fun_name][token]["res"] = `${content}`;
+    })
+    /*
+    exec(cmd,{"cwd":getFunctionPath(req.params.name) }, (error, stdout, stderr) => {
             Executions[fun_name][token]["status"] = "done";
             Executions[fun_name][token]["res"] = `${stdout}`;
         });
+     */
     res.send(`invoke ${fun_name} with unique id ${token} <a href="/results/${fun_name}/${token}">test</a>`);
 });
 
 app.get('/results/:name/:exec_id',(req, res) => {
     let exec_id = req.params.exec_id;
-    var fun_name = req.params.name;
+    let fun_name = req.params.name;
 
     if(!Executions[fun_name][exec_id]) {
         res.send(`token ${exec_id} not related to an execution. `);
         return;
 }
     
-    if(Executions[fun_name][exec_id]['status'] == 'executing'){
+    if(Executions[fun_name][exec_id]['status'] === 'executing'){
         res.send(`execution ${exec_id} is still running.`);
         return;
     }
-    res.send(`exec with uuid ${req.params.exec_id} has as output:\n${Executions[fun_name][req.params.exec_id]["res"]}`);
+    res.send(`exec with uuid ${exec_id} has as output:\n${Executions[fun_name][exec_id]["res"]}`);
 })
+
+app.post('/upload', function(req, res) {
+    if (!req.files) {
+        return res.status(400).send("No files uploaded!");
+      }
+    
+      const file = req.files.f;
+        console.log(file.name);
+      const path = getFunctionPath(file.name);
+      fs.mkdirSync(path, { recursive: true });
+
+      file.mv(path + file.name, (err) => {
+        if (err) {
+          return res.status(500).send(err);
+        }
+
+        //file copy template function here ...
+          templateCopy(file.name);
+
+        return res.send({ status: "success", path: path });
+      });
+  });
+
+function templateCopy(filename){
+    // directory already created, we don't need to check it ...
+    fs.copyFile('template.yml', getFunctionPath(filename) + "serverless.yml", (err) => {
+        if (err) throw err;
+        console.log('Copied serverless file');
+        injectFunctionName(getFunctionPath(filename) + "serverless.yml", filename);
+        console.log('template injected with function name');
+    });
+}
+
+function injectFunctionName(filepath, filename){
+    let functionName = getFilenameNoExtention(filename);
+    fs.readFile(filepath, 'utf8', function (err,data) {
+        if (err) {
+            return console.log(err);
+        }
+        let res = data.replace(/<FUN>/g, functionName);
+
+        fs.writeFile(filepath, res, 'utf8', function (err) {
+            if (err) return console.log(err);
+        });
+    });
+}
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`)
