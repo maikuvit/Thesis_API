@@ -1,0 +1,15 @@
+service: <FUN>
+
+provider:
+  name: openwhisk
+  ignore_certs: true
+  runtime: python:3
+
+functions:
+  <FUN>:
+    handler: <FUN>.<FUN>
+
+plugins:
+  - serverless-openwhisk
+
+configValidationMode: off

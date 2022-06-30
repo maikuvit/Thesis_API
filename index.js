@@ -17,7 +17,7 @@ app.use(
     fileUpload()
   );
 
-  //TEST ONLY
+//TEST ONLY
 app.get('/path', (req, res) => {
     res.send(`${FUNCTIONS_PATH}`)
   })
@@ -25,13 +25,13 @@ app.get('/path', (req, res) => {
 //#### deploy a function ####
 app.get('/deploy/:name', (req, res) => {
     Executions[req.params.name] = [];
+    console.log(util.getFunctionPath(FUNCTIONS_PATH,req.params.name));
     //sync execution to the serverless deploy (no need to async it)
     exec(`serverless deploy`,{"cwd": util.getFunctionPath(FUNCTIONS_PATH,req.params.name)} , (error, stdout, stderr) => {
         console.log(stdout);
         res.send(stdout);
     });
 })
-
 
 //#### remove a function ####
 app.get('/remove/:name', (req, res) => {
@@ -40,7 +40,6 @@ app.get('/remove/:name', (req, res) => {
         res.send(stdout);
     });
 });
-
 
 //#### invoke a function ####
 app.get('/invoke/:name', (req, res) => {
@@ -98,15 +97,26 @@ app.get('/results/:name/:exec_id',(req, res) => {
 
 app.post('/upload', function(req, res) {
     //check if i have files ...
+    let req_libraries = false;
     if (!req.files) {
         return res.status(400).send("No files uploaded!");
       }
+    if (!req.files.function){
+        return res.status(400).send("No function file uploaded!");
+    }
 
     const func = req.files.function;
-
     //create the needed directory ...
     const path = util.getFunctionPath(FUNCTIONS_PATH,func.name);
     fs.mkdirSync(path, { recursive: true });
+
+    if (req.files.requirements) {
+        const requirements = req.files.requirements;
+        req_libraries = true;
+        requirements.mv(path + "requirements.txt", (err) => {if (err) {
+            return res.status(500).send(err);
+        }});
+    }
 
     //copy file into the directory ...
     func.mv(path + func.name, (err) => {
@@ -115,17 +125,18 @@ app.post('/upload', function(req, res) {
     }
 
     //serverless file handler ...
-    templateCopy(func.name);
+    templateCopy(func.name,req_libraries);
 
     return res.send({ status: "success", path: path });
     });
   });
 
-
 // ########### FILE FUNCTIONS ... ###########
-function templateCopy(filename){
+function templateCopy(filename, requiredFUnctions = false){
     // directory already created, we don't need to check it ...
-    fs.copyFile('template.yml', util.getFunctionPath(FUNCTIONS_PATH,filename) + "serverless.yml", (err) => {
+    let templPath = "simple_template.yml";
+    if(requiredFUnctions) templPath = "lib_template.yml";
+    fs.copyFile(templPath, util.getFunctionPath(FUNCTIONS_PATH,filename) + "serverless.yml", (err) => {
         if (err) throw err;
         console.log('Copied serverless file');
         injectFunctionName(util.getFunctionPath(FUNCTIONS_PATH,filename) + "serverless.yml", filename);
