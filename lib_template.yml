@@ -1,4 +1,4 @@
-service: <FUN>
+service: functions
 
 provider:
   name: openwhisk
@@ -8,6 +8,8 @@ provider:
 functions:
   <FUN>:
     handler: <FUN>.<FUN>
+    annotations:
+      web-export: true
 
 plugins:
   - serverless-python-requirements

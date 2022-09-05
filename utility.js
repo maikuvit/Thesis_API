@@ -1,11 +1,30 @@
 
-    function getFunctionPath (stdPath,filename){
-        console.log(filename);
+    function getPath (stdPath,filename){
         return `${stdPath + "\\" + getFilenameNoExtention(filename) }\\`;
     }
-
     function getFilenameNoExtention (filename){
         return filename.replace(/\.[^/.]+$/, "");
     }
 
-    module.exports = {getFunctionPath , getFilenameNoExtention}
+    const { MongoClient } = require("mongodb");
+    var dbClient; 
+    var dbConnection;
+    function connectDB (URI,callback) {
+        dbClient = new MongoClient(URI);
+        dbClient.connect(function (err, db) {
+          if (err || !db) {
+            return callback(err);
+          }
+    
+        dbConnection = db.db("functions_API");
+        console.log("Connected to MongoDB.");
+        return callback();
+        });
+    }
+
+    function getDB(){
+        return dbConnection;
+    }
+
+
+    module.exports = {getPath , getFilenameNoExtention, connectDB, getDB}

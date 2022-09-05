@@ -1,3 +1,0 @@
-Measure-Command { wsk action invoke matrix-dev-matrix --result}
-
-Measure-Command { serverless invoke -f matrix}
