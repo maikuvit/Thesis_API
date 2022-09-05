@@ -23,6 +23,8 @@ const app = express()
 const ow = openwhisk();
 const port = 80
 
+var running_exec = [];
+
 const FUNCTIONS_PATH = `${__dirname + "\\files"}`;
 
 var jsonParser = bodyParser.json();
@@ -59,7 +61,7 @@ app.get('/deploy/:name', (req, res) => {
 
         dbClient.createCollection(req.params.name, function(err, res) {
             if (err) console.log(err);
-            console.log("Collection created!");
+            else console.log("Collection created!");
           });
     });
 })
@@ -89,7 +91,7 @@ app.post('/invoke/:name', jsonParser, (req, res) => {
 
     let name = `functions-dev-${fun_name}`;
     const blocking = true, result = true
-
+    running_exec.push(token);
     let options = {name, blocking, result, params};
     ow.actions.invoke(options).then(async (exec_res) => {
 
@@ -98,6 +100,12 @@ app.post('/invoke/:name', jsonParser, (req, res) => {
         console.log(exec_res);
         var out = await dbClient.collection(fun_name).insertOne(exec_res);
         console.log(out);
+
+        //remove the token from the array ...
+        var index = running_exec.indexOf(token);
+        if (index > -1) {
+            running_exec.splice(index, 1);
+        }
         //webhooks handling ...
         webhooksHandler(webhooks,exec_res);
     } )
@@ -113,24 +121,24 @@ app.get('/results/:name/:exec_id',async (req, res) => {
     let exec_id = req.params.exec_id;
     let fun_name = req.params.name;
 
+    if(running_exec.findIndex(exec_id) > -1)
+    return res.status(200).send("function still executing");
     const dbClient = util.getDB();
     //call al db in lettura ...
     dbClient.collection(fun_name)
     .find({"_id": exec_id})
     .limit(1)
     .toArray(function (err, result) {
-        if (err) {
-          res.status(400).send("Error fetching listings!");
-       } else {
-        if(result.length == 0){
-            res.status(400).send("couple function/exec_code not exists");
-            return;
-        }
+        if (err) 
+            return res.status(400).send("Error fetching listings!");
+       
+        if(result.length == 0)
+            return res.status(400).send("couple function/exec_code not exists");
+    
         //qui posso modificare il return 
         //(es: res vuoto -> no execution found)
         // posso anche aggiungere una collection per ogni function 
-          res.status(200).json(result);
-        }
+        return res.status(200).json(result);
     });    
 });
 
