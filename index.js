@@ -5,6 +5,7 @@ const bodyParser = require('body-parser')
 const fileUpload = require("express-fileupload");
 const fs = require('fs');
 const util = require("./utility");
+const axios = require("axios");
 const {getPath} = require("./utility");
 const { MongoClient } = require("mongodb");
 const openwhisk = require('openwhisk');
@@ -12,6 +13,7 @@ const { toNamespacedPath, resolve } = require('path');
 const { constants } = require('buffer');
 
 const dotenv = require('dotenv');
+const { resourceLimits } = require('worker_threads');
 dotenv.config();
 
 
@@ -22,7 +24,6 @@ const ow = openwhisk();
 const port = 80
 
 const FUNCTIONS_PATH = `${__dirname + "\\files"}`;
-const OUT_PATH = `${__dirname + "\\executions"}`;
 
 var jsonParser = bodyParser.json();
 
@@ -54,6 +55,12 @@ app.get('/deploy/:name', (req, res) => {
         console.log(stdout);
         res.send(stdout);
 
+        const dbClient = util.getDB();
+
+        dbClient.createCollection(req.params.name, function(err, res) {
+            if (err) console.log(err);
+            console.log("Collection created!");
+          });
     });
 })
 
@@ -70,24 +77,29 @@ app.post('/invoke/:name', jsonParser, (req, res) => {
 
     let fun_name = req.params.name;
     console.log(req.body);
-    let par = req.body;
+    let params = req.body;
+    let webhooks = [];
+    if (req.body.webhooks){
+        webhooks = req.body.webhooks;
+        delete params[webhooks];
+    }
 
-    let token = "12"; //uuid.v1();
+    let token = uuid.v1();
     const dbClient = util.getDB();
 
     let name = `functions-dev-${fun_name}`;
-    let blocking = true;
-    let resssss = true;
+    const blocking = true, result = true
 
-    let options = {name, blocking, resssss, par};
-    ow.actions.invoke(options).then(async (result) => {
+    let options = {name, blocking, result, params};
+    ow.actions.invoke(options).then(async (exec_res) => {
 
         //assegno token sub ...
-        result._id = token;
-        var out = await dbClient.collection("executions").insertOne(result);
+        exec_res._id = token;
+        console.log(exec_res);
+        var out = await dbClient.collection(fun_name).insertOne(exec_res);
         console.log(out);
-
         //webhooks handling ...
+        webhooksHandler(webhooks,exec_res);
     } )
     .catch((err) => console.log(err));
 
@@ -103,7 +115,7 @@ app.get('/results/:name/:exec_id',async (req, res) => {
 
     const dbClient = util.getDB();
     //call al db in lettura ...
-    dbClient.collection("executions")
+    dbClient.collection(fun_name)
     .find({"_id": exec_id})
     .limit(1)
     .toArray(function (err, result) {
@@ -159,10 +171,10 @@ app.post('/upload', function(req, res) {
   });
 
 // ########### FILE FUNCTIONS ... ###########
-function templateCopy(filename, requiredFUnctions = false){
+function templateCopy(filename, requireLibraries = false){
     // directory already created, we don't need to check it ...
     let templPath = "simple_template.yml";
-    if(requiredFUnctions) templPath = "lib_template.yml";
+    if(requireLibraries) templPath = "lib_template.yml";
     fs.copyFile(templPath, util.getPath(FUNCTIONS_PATH,filename) + "serverless.yml", (err) => {
         if (err) throw err;
         console.log('Copied serverless file');
@@ -183,6 +195,13 @@ function injectFunctionName(filepath, filename){
             if (err) return console.log(err);
         });
     });
+}
+
+function webhooksHandler(webhooks,results){
+    for(let w in webhooks){
+        console.log(webhooks[w]);
+        axios.post(webhooks[w], results);
+    } 
 }
 
 // [END] ####### FILE FUNCTIONS ... ###########
