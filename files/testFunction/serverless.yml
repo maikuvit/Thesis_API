@@ -1,0 +1,15 @@
+service: testFunction
+
+provider:
+  name: openwhisk
+  ignore_certs: true
+  runtime: python:3
+
+functions:
+  testFunction:
+    handler: testFunction.testFunction
+
+plugins:
+  - serverless-openwhisk
+
+configValidationMode: off

@@ -1,0 +1,21 @@
+service: matrix
+
+provider:
+  name: openwhisk
+  ignore_certs: true
+  runtime: python:3
+
+functions:
+  matrix:
+    handler: matrix.matrix
+    memory: 512
+
+plugins:
+  - serverless-python-requirements
+  - serverless-openwhisk
+
+custom:
+  pythonRequirements:
+    dockerizePip: false
+
+configValidationMode: off
